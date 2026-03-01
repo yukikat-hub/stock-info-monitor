@@ -1,0 +1,10 @@
+{
+  "stocks": [
+    {"ticker": "6098", "name": "リクルートホールディングス"},
+    {"ticker": "2646", "name": "グローバルＸ 半導体関連-日本株式 ETF"},
+    {"ticker": "5586", "name": "Laboro.AI"},
+    {"ticker": "4011", "name": "ヘッドウォータース"}
+  ],
+  "keywords": ["半導体", "AI", "業務提携", "決算", "上方修正"],
+  "discord_webhook_url": "YOUR_DISCORD_WEBHOOK_URL_HERE"
+}
