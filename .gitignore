@@ -6,7 +6,7 @@ venv/
 .venv/
 
 # State files
-last_notified.json
+# last_notified.json (Removed from ignore to allow GitHub Actions to track state)
 
 # Environment variables
 .env
