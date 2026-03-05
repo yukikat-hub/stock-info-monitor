@@ -82,6 +82,22 @@ def summarize_batch_with_retry(api_key, stock_data_list):
 
     client = genai.Client(api_key=api_key, http_options={'api_version': 'v1'})
     
+    combined_input = ""
+    for item in stock_data_list:
+        combined_input += f"■ 【{item['ticker']}】{item['name']}\n"
+        if item.get('portfolio'):
+            p = item['portfolio']
+            combined_input += f"（保有状況: {p.get('quantity', 0)}株, 平均取得単価: {p.get('average_acquisition_price', 0)}, 現在価値: {p.get('market_value', 0)}, 前日比損益: {p.get('unrealized_gain_loss', 0)}）\n"
+        
+        for a in item['articles']:
+            combined_input += f"- {a['title']} ({a['source']})\n"
+            if a.get('snippet') and len(a['snippet']) > 20:
+                combined_input += f"  内容概要: {a['snippet'][:150]}...\n"
+        combined_input += "\n"
+
+    if not combined_input:
+        return None
+
     # 投資アドバイスと判定されないよう、役割を「高度な情報収集・整理アシスタント」に調整
     prompt = f"""
 あなたは高度なビジネス情報整理アシスタントです。
