@@ -18,7 +18,7 @@ def load_json(filepath):
     if os.path.exists(filepath):
         with open(filepath, 'r', encoding='utf-8') as f:
             return json.load(f)
-    return {}
+    return [] if filepath == PORTFOLIO_FILE else {}
 
 def save_json(filepath, data):
     with open(filepath, 'w', encoding='utf-8') as f:
@@ -80,7 +80,6 @@ def summarize_batch_with_retry(api_key, stock_data_list):
     if not api_key:
         return "Gemini APIキーが設定されていません。"
 
-    # Use stable v1
     client = genai.Client(api_key=api_key, http_options={'api_version': 'v1'})
     
     combined_input = ""
@@ -88,7 +87,7 @@ def summarize_batch_with_retry(api_key, stock_data_list):
         combined_input += f"■ 【{item['ticker']}】{item['name']}\n"
         if item.get('portfolio'):
             p = item['portfolio']
-            combined_input += f"（保有状況: {p.get('quantity', 0)}株, 平均取得単価: {p.get('average_acquisition_price', 0)}, 前日比損益: {p.get('unrealized_gain_loss', 0)}）\n"
+            combined_input += f"（保有状況: {p.get('quantity', 0)}株, 平均取得単価: {p.get('average_acquisition_price', 0)}, 現在価値: {p.get('market_value', 0)}, 前日比損益: {p.get('unrealized_gain_loss', 0)}）\n"
         
         for a in item['articles']:
             combined_input += f"- {a['title']} ({a['source']})\n"
@@ -99,57 +98,27 @@ def summarize_batch_with_retry(api_key, stock_data_list):
     if not combined_input:
         return None
 
-    # 投資アナリストとしての深い分析を復活させ、かつ安全性チェックに抵触しにくい表現にする
     prompt = f"""
-あなたはプロの証券アナリスト兼ポートフォリオマネージャーです。
-以下の銘柄ニュースと投資家の保有状況（取得単価・損益）に基づき、プロの視点から「真に実用的な投資判断の材料」を整理して提供してください。
+あなたは詳細な投資家向けレポートを作成するプロのアナリストです。
+提供されたニュースと投資家の保有状況に基づき、ポートフォリオへの影響度が高い順に整理された情報を分析してください。
 
-【分析の要件】
-1. **ファンダメンタルズの変化**: ニュースが中長期的な収益力や競争優位性にどう影響するか。
-2. **需給と市場心理**: 機関投資家や市場全体がこの情報をどう捉え、今後の株価形成にどう寄与するか。
-3. **リスクとシナリオ**: 楽観視できない懸念点や、今後注視すべきマクロ経済指標。
-4. **保有状況に応じた戦略案**: 現在の含み損益を踏まえ、冷静な判断（買い増し、一部利確、損切り検討、継続保有）を行うための論理的な示唆。
+【分析のポイント】
+1. **主要トピックスと価値判断**: ニュースが企業のファンダメンタルズや将来性にどう寄与するか。
+2. **保有状況（損益・投資規模）を踏まえた視点**: 投資額が大きい順に分析が並んでいることを踏まえ、特に上位銘柄については精緻な分析を行ってください。
+3. **客観的な事実**: 感情論を排し、市場のコンセンサスやマクロ環境に基づいた論理的な推察。
 
-※注意: 本回答は情報整理に基づくシミュレーションであり、最終的な投資決定は自己責任で行うよう付記してください。
+※注意: 本回答は投資判断の参考情報であり、取引を強制するものではありません。
 
-【入力データ】
+【対象銘柄データ】
 {combined_input}
 
 【出力形式】
 - 各銘柄「**【銘柄名 (ティッカー)】**」を見出しにする。
-- プロのレポートとして、1銘柄あたり300文字程度の濃密な分析。
-- 丁寧かつ論理的、自信に満ちた専門的な口調。
+- プロらしい濃密な分析（1銘柄あたり300文字程度）。
+- 冷静で信頼感のある敬体（日本語）。
 """
 
-    # Try discovering models programmatically
-    discovered_models = []
-    try:
-        print("Discovering available models...")
-        for m in client.models.list():
-            discovered_models.append(m.name)
-        print(f"Discovered models: {discovered_models}")
-    except Exception as e:
-        print(f"Model discovery failed: {e}")
-
-    # Priority list (try both with and without prefix)
-    potential_model_names = [
-        'gemini-1.5-flash', 
-        'gemini-1.5-flash-latest',
-        'gemini-2.0-flash', 
-        'gemini-pro'
-    ]
-    
-    # Expand with discovered models
-    candidates = []
-    for name in potential_model_names:
-        candidates.append(name)
-        if not name.startswith('models/'):
-            candidates.append(f"models/{name}")
-    
-    for m in discovered_models:
-        if m not in candidates:
-            candidates.append(m)
-
+    models_to_try = ['models/gemini-1.5-flash', 'models/gemini-2.0-flash', 'models/gemini-1.5-pro']
     safety_settings = [
         types.SafetySetting(category='HARM_CATEGORY_HATE_SPEECH', threshold='BLOCK_NONE'),
         types.SafetySetting(category='HARM_CATEGORY_HARASSMENT', threshold='BLOCK_NONE'),
@@ -157,46 +126,20 @@ def summarize_batch_with_retry(api_key, stock_data_list):
         types.SafetySetting(category='HARM_CATEGORY_DANGEROUS_CONTENT', threshold='BLOCK_NONE'),
     ]
 
-    block_reasons = []
-    for model_id in candidates:
+    for model_id in models_to_try:
         try:
-            print(f"Attempting Gemini model: {model_id}...")
+            print(f"Trying Gemini model: {model_id}...")
             response = client.models.generate_content(
                 model=model_id, 
                 contents=prompt,
-                config=types.GenerateContentConfig(
-                    safety_settings=safety_settings,
-                    temperature=0.4
-                )
+                config=types.GenerateContentConfig(safety_settings=safety_settings, temperature=0.4)
             )
             if response and response.text:
                 return response.text.strip()
-            else:
-                reason = "No text returned/Blocked"
-                print(f"Model {model_id} failed: {reason}")
-                block_reasons.append(f"{model_id}: {reason}")
         except Exception as e:
-            err_msg = str(e)
-            print(f"Model {model_id} error: {err_msg[:200]}")
-            block_reasons.append(f"{model_id}: {err_msg[:50]}")
+            print(f"Model {model_id} error: {str(e)[:150]}")
             continue
-
-    # Final attempt: fallback to v1beta if everything else failed
-    if "404" in "".join(block_reasons):
-        print("Switching to v1beta for fallback...")
-        try:
-            beta_client = genai.Client(api_key=api_key, http_options={'api_version': 'v1beta'})
-            response = beta_client.models.generate_content(
-                model='gemini-1.5-flash',
-                contents=prompt,
-                config=types.GenerateContentConfig(safety_settings=safety_settings)
-            )
-            if response and response.text:
-                return response.text.strip()
-        except Exception as e:
-            print(f"v1beta fallback failed: {e}")
-
-    return f"⚠️ 要約生成に失敗しました。\n詳細: {', '.join(block_reasons[:5])}..."
+    return f"⚠️ 要約生成に失敗しました（AI側の制限またはエラー）。"
 
 def send_discord_notification(webhook_url, content, is_embed=True):
     if not webhook_url or "YOUR_DISCORD" in webhook_url:
@@ -214,8 +157,6 @@ def send_discord_notification(webhook_url, content, is_embed=True):
 
     try:
         response = requests.post(webhook_url, json=data)
-        if response.status_code != 204:
-            print(f"Failed to send notification: {response.status_code}")
     except Exception as e:
         print(f"Error sending to Discord: {e}")
 
@@ -225,6 +166,7 @@ def main():
     args = parser.parse_args()
 
     config = load_json(CONFIG_FILE)
+    if isinstance(config, list): config = {"stocks": [], "keywords": []} # Failsafe
     state = load_json(STATE_FILE)
     portfolio = load_json(PORTFOLIO_FILE)
     
@@ -232,50 +174,60 @@ def main():
     gemini_api_key = os.environ.get('GEMINI_API_KEY')
 
     portfolio_map = {item['ticker_code']: item for item in portfolio if 'ticker_code' in item}
+    config_map = {s['ticker']: s for s in config.get('stocks', [])}
 
     if args.summary:
         today = datetime.now()
-        is_monday = today.weekday() == 0
-        stock_data_list = []
         
-        print("Gathering news for summary...")
-        for stock in config['stocks']:
-            ticker = stock['ticker']
-            name = stock['name']
+        # Combine all tickers (from config and portfolio)
+        all_tickers = set(portfolio_map.keys()) | set(config_map.keys())
+        
+        stock_data_list = []
+        print(f"Gathering data for {len(all_tickers)} stocks...")
+        
+        for ticker in all_tickers:
+            p_data = portfolio_map.get(ticker)
+            c_data = config_map.get(ticker)
             
-            # If manually triggered (or periodic), we summarize anyway
-            articles = fetch_google_news(ticker, name, days=7) # Past week news
+            name = (p_data.get('name') if p_data else None) or (c_data.get('name') if c_data else None) or ticker
+            market_value = p_data.get('market_value', 0) if p_data else -1 # Use -1 for non-portfolio items to put them at very bottom
+            
+            articles = fetch_google_news(ticker, name, days=7)
             if not articles:
-                articles = fetch_google_news(ticker, name, days=14)[:2] # Older fallback
+                articles = fetch_google_news(ticker, name, days=14)[:2]
             
             stock_data_list.append({
-                'ticker': ticker, 'name': name, 'articles': articles, 
-                'label': "【マーケット分析】", 'portfolio': portfolio_map.get(ticker)
+                'ticker': ticker, 
+                'name': name, 
+                'articles': articles, 
+                'market_value': market_value,
+                'portfolio': p_data
             })
 
+        # Sort by market value (descending)
+        stock_data_list.sort(key=lambda x: x['market_value'], reverse=True)
+
         if stock_data_list:
-            # Batch processing: 3 stocks per request to avoid safety/token issues
             batch_size = 3
             summaries = []
             for i in range(0, len(stock_data_list), batch_size):
                 batch = stock_data_list[i : i + batch_size]
-                print(f"Processing batch {i//batch_size + 1} ({len(batch)} stocks)...")
+                print(f"Processing batch {i//batch_size + 1}...")
                 batch_summary = summarize_batch_with_retry(gemini_api_key, batch)
                 summaries.append(batch_summary)
-                time.sleep(1) # Tiny sleep to avoid RPM spikes
+                time.sleep(1)
 
             full_summary = "\n\n".join(summaries)
             header = f"## 💎 AI 投資戦略サマリー ({today.strftime('%Y/%m/%d')})\n\n"
             send_discord_notification(webhook_url, header + full_summary, is_embed=False)
         else:
-            print("No news to summarize.")
+            print("No data to summarize.")
 
     else:
         # Alert Mode
         new_state = state.copy()
-        for stock in config['stocks']:
-            ticker, name = stock['ticker'], stock['name']
-            print(f"Checking {ticker}...")
+        for s in config.get('stocks', []):
+            ticker, name = s['ticker'], s['name']
             all_articles = fetch_google_news(ticker, name) + fetch_tdnet(ticker)
             for article in all_articles:
                 if article['id'] not in state.get(ticker, []):
