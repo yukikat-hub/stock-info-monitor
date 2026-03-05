@@ -79,16 +79,16 @@ def summarize_batch(api_key, stock_data_list):
     if not api_key:
         return "Gemini APIキーが設定されていません。"
 
-    client = genai.Client(api_key=api_key)
+    # Initialize client with stable v1 API version to avoid routing issues
+    client = genai.Client(api_key=api_key, http_options={'api_version': 'v1'})
     
     # 診断用：利用可能なモデルをリストアップする
     available_models = []
     try:
-        print("利用可能なGeminiモデルを検索中...")
+        print("利用可能なGeminiモデルを検索中 (API v1)...")
         for m in client.models.list():
-            # generate_content メソッドをサポートしているモデルを探す
-            if 'generate_content' in m.supported_generation_methods or 'generateContent' in m.supported_generation_methods:
-                available_models.append(m.name)
+            # 新しいSDKのModelオブジェクトの属性を確認
+            available_models.append(m.name)
         print(f"発見されたモデル: {available_models}")
     except Exception as e:
         print(f"モデルリストの取得に失敗しました: {e}")
