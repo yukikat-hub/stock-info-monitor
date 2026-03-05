@@ -82,43 +82,33 @@ def summarize_batch_with_retry(api_key, stock_data_list):
 
     client = genai.Client(api_key=api_key, http_options={'api_version': 'v1'})
     
-    combined_input = ""
-    for item in stock_data_list:
-        combined_input += f"■ 【{item['ticker']}】{item['name']}\n"
-        if item.get('portfolio'):
-            p = item['portfolio']
-            combined_input += f"（保有状況: {p.get('quantity', 0)}株, 平均取得単価: {p.get('average_acquisition_price', 0)}, 現在価値: {p.get('market_value', 0)}, 前日比損益: {p.get('unrealized_gain_loss', 0)}）\n"
-        
-        for a in item['articles']:
-            combined_input += f"- {a['title']} ({a['source']})\n"
-            if a.get('snippet') and len(a['snippet']) > 20:
-                combined_input += f"  内容概要: {a['snippet'][:150]}...\n"
-        combined_input += "\n"
-
-    if not combined_input:
-        return None
-
+    # 投資アドバイスと判定されないよう、役割を「高度な情報収集・整理アシスタント」に調整
     prompt = f"""
-あなたは詳細な投資家向けレポートを作成するプロのアナリストです。
-提供されたニュースと投資家の保有状況に基づき、ポートフォリオへの影響度が高い順に整理された情報を分析してください。
+あなたは高度なビジネス情報整理アシスタントです。
+以下のニュースとデータに基づき、市場の事実関係を客観的に要約・整理してください。
 
-【分析のポイント】
-1. **主要トピックスと価値判断**: ニュースが企業のファンダメンタルズや将来性にどう寄与するか。
-2. **保有状況（損益・投資規模）を踏まえた視点**: 投資額が大きい順に分析が並んでいることを踏まえ、特に上位銘柄については精緻な分析を行ってください。
-3. **客観的な事実**: 感情論を排し、市場のコンセンサスやマクロ環境に基づいた論理的な推察。
+【整理の要件】
+1. **事実の抽出**: ニュースが企業の事業や収益性に与える具体的な事実関係。
+2. **市場のコンセンサス**: 報道等から読み取れる一般的な市場の反応や期待値。
+3. **データ整理**: 保有銘柄の状況（規模・損益）に応じた情報の優先順位付け。
 
-※注意: 本回答は投資判断の参考情報であり、取引を強制するものではありません。
+※注意: 本内容は売買を推奨するものではなく、公開情報の整理を目的としています。
 
-【対象銘柄データ】
+【対象データ】
 {combined_input}
-
-【出力形式】
-- 各銘柄「**【銘柄名 (ティッカー)】**」を見出しにする。
-- プロらしい濃密な分析（1銘柄あたり300文字程度）。
-- 冷静で信頼感のある敬体（日本語）。
 """
 
-    models_to_try = ['models/gemini-1.5-flash', 'models/gemini-2.0-flash', 'models/gemini-1.5-pro']
+    # 以前成功したロジックに基づき、動的な発見とprefix試行を復活
+    discovered_models = []
+    try:
+        for m in client.models.list():
+            discovered_models.append(m.name)
+    except: pass
+
+    candidates = ['models/gemini-1.5-flash', 'gemini-1.5-flash', 'models/gemini-2.0-flash', 'gemini-2.0-flash']
+    for m in discovered_models:
+        if m not in candidates: candidates.append(m)
+
     safety_settings = [
         types.SafetySetting(category='HARM_CATEGORY_HATE_SPEECH', threshold='BLOCK_NONE'),
         types.SafetySetting(category='HARM_CATEGORY_HARASSMENT', threshold='BLOCK_NONE'),
@@ -126,20 +116,32 @@ def summarize_batch_with_retry(api_key, stock_data_list):
         types.SafetySetting(category='HARM_CATEGORY_DANGEROUS_CONTENT', threshold='BLOCK_NONE'),
     ]
 
-    for model_id in models_to_try:
+    errors = []
+    for model_id in candidates:
         try:
-            print(f"Trying Gemini model: {model_id}...")
+            print(f"Trying {model_id}...")
             response = client.models.generate_content(
                 model=model_id, 
                 contents=prompt,
-                config=types.GenerateContentConfig(safety_settings=safety_settings, temperature=0.4)
+                config=types.GenerateContentConfig(safety_settings=safety_settings, temperature=0.3)
             )
             if response and response.text:
                 return response.text.strip()
+            else:
+                reason = getattr(response, 'candidates', [{}])[0].get('finish_reason', 'Unknown/Blocked')
+                errors.append(f"{model_id}(Block:{reason})")
         except Exception as e:
-            print(f"Model {model_id} error: {str(e)[:150]}")
+            errors.append(f"{model_id}({str(e)[:40]})")
             continue
-    return f"⚠️ 要約生成に失敗しました（AI側の制限またはエラー）。"
+
+    # v1beta Fallback
+    try:
+        beta_client = genai.Client(api_key=api_key, http_options={'api_version': 'v1beta'})
+        response = beta_client.models.generate_content(model='gemini-1.5-flash', contents=prompt)
+        if response and response.text: return response.text.strip()
+    except: pass
+
+    return f"⚠️ 要約生成に失敗しました。\n詳細ログ: {', '.join(errors[:3])}"
 
 def send_discord_notification(webhook_url, content, is_embed=True):
     if not webhook_url or "YOUR_DISCORD" in webhook_url:
