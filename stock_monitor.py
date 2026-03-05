@@ -81,6 +81,18 @@ def summarize_batch(api_key, stock_data_list):
 
     client = genai.Client(api_key=api_key)
     
+    # 診断用：利用可能なモデルをリストアップする
+    available_models = []
+    try:
+        print("利用可能なGeminiモデルを検索中...")
+        for m in client.models.list():
+            # generate_content メソッドをサポートしているモデルを探す
+            if 'generate_content' in m.supported_generation_methods or 'generateContent' in m.supported_generation_methods:
+                available_models.append(m.name)
+        print(f"発見されたモデル: {available_models}")
+    except Exception as e:
+        print(f"モデルリストの取得に失敗しました: {e}")
+
     combined_input = ""
     for item in stock_data_list:
         titles = [a['title'] for a in item['articles']]
@@ -105,18 +117,24 @@ def summarize_batch(api_key, stock_data_list):
 - 冷静かつ客観的なトーン。
 """
 
-    # List of models to try in order of preference (latest/cheapest first)
-    # Note: 'gemini-2.0-flash' might return 429/limit:0 in some regions, so we fallback to 1.5
+    # 優先順位リスト
     models_to_try = [
         'gemini-2.0-flash', 
         'gemini-1.5-flash', 
-        'gemini-2.0-flash-lite-preview-02-05',
         'gemini-1.5-flash-latest',
-        'gemini-1.5-pro'
+        'gemini-2.0-flash-lite-preview-02-05'
     ]
     
+    # 重複を避けて試行リストを作成
+    final_candidates = models_to_try.copy()
+    for m in available_models:
+        # models/ を除去した名前と比較
+        short_name = m.replace('models/', '')
+        if short_name not in final_candidates:
+            final_candidates.append(m)
+
     last_error = ""
-    for model_id in models_to_try:
+    for model_id in final_candidates:
         try:
             print(f"Trying Gemini model: {model_id}...")
             response = client.models.generate_content(
@@ -132,8 +150,8 @@ def summarize_batch(api_key, stock_data_list):
             continue
 
     if "429" in last_error:
-        return "Gemini APIの無料枠制限（429 Error）です。Google AI StudioでAPIキーの利用制限（Quota）を確認するか、時間をおいてお試しください。"
-    return f"AI要約の生成中にエラーが発生しました。全てのモデルが利用できませんでした。最後の理由: {last_error}"
+        return "Gemini APIの無料枠制限（429 Error/Quota Exceeded）です。Google AI Studioで利用制限を確認してください。"
+    return f"AI要約の生成中にエラーが発生しました。全てのモデルが利用できませんでした。理由: {last_error}"
 
 def send_discord_notification(webhook_url, content, is_embed=True):
     if not webhook_url or "YOUR_DISCORD" in webhook_url:
