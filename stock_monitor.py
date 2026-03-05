@@ -121,13 +121,35 @@ def summarize_batch_with_retry(api_key, stock_data_list):
 - 丁寧かつ論理的、自信に満ちた専門的な口調。
 """
 
-    models_to_try = [
-        'models/gemini-1.5-flash', 
-        'models/gemini-2.0-flash', 
-        'models/gemini-1.5-pro'
+    # Try discovering models programmatically
+    discovered_models = []
+    try:
+        print("Discovering available models...")
+        for m in client.models.list():
+            discovered_models.append(m.name)
+        print(f"Discovered models: {discovered_models}")
+    except Exception as e:
+        print(f"Model discovery failed: {e}")
+
+    # Priority list (try both with and without prefix)
+    potential_model_names = [
+        'gemini-1.5-flash', 
+        'gemini-1.5-flash-latest',
+        'gemini-2.0-flash', 
+        'gemini-pro'
     ]
     
-    # 正しいカテゴリ名（HARM_CATEGORY_ プレフィックス）を使用
+    # Expand with discovered models
+    candidates = []
+    for name in potential_model_names:
+        candidates.append(name)
+        if not name.startswith('models/'):
+            candidates.append(f"models/{name}")
+    
+    for m in discovered_models:
+        if m not in candidates:
+            candidates.append(m)
+
     safety_settings = [
         types.SafetySetting(category='HARM_CATEGORY_HATE_SPEECH', threshold='BLOCK_NONE'),
         types.SafetySetting(category='HARM_CATEGORY_HARASSMENT', threshold='BLOCK_NONE'),
@@ -136,9 +158,9 @@ def summarize_batch_with_retry(api_key, stock_data_list):
     ]
 
     block_reasons = []
-    for model_id in models_to_try:
+    for model_id in candidates:
         try:
-            print(f"Trying Gemini model: {model_id} for batch...")
+            print(f"Attempting Gemini model: {model_id}...")
             response = client.models.generate_content(
                 model=model_id, 
                 contents=prompt,
@@ -150,19 +172,31 @@ def summarize_batch_with_retry(api_key, stock_data_list):
             if response and response.text:
                 return response.text.strip()
             else:
-                candidates = getattr(response, 'candidates', [])
-                reason = "不明（レスポンス空）"
-                if candidates:
-                    reason = getattr(candidates[0], 'finish_reason', 'Unknown')
-                print(f"Model {model_id} blocked. Reason: {reason}")
+                reason = "No text returned/Blocked"
+                print(f"Model {model_id} failed: {reason}")
                 block_reasons.append(f"{model_id}: {reason}")
         except Exception as e:
-            err_str = str(e)[:100]
-            print(f"Model {model_id} error: {err_str}")
-            block_reasons.append(f"{model_id}: Error({err_str})")
+            err_msg = str(e)
+            print(f"Model {model_id} error: {err_msg[:200]}")
+            block_reasons.append(f"{model_id}: {err_msg[:50]}")
             continue
-    
-    return f"⚠️ 要約生成に失敗しました。\n理由: {', '.join(block_reasons)}"
+
+    # Final attempt: fallback to v1beta if everything else failed
+    if "404" in "".join(block_reasons):
+        print("Switching to v1beta for fallback...")
+        try:
+            beta_client = genai.Client(api_key=api_key, http_options={'api_version': 'v1beta'})
+            response = beta_client.models.generate_content(
+                model='gemini-1.5-flash',
+                contents=prompt,
+                config=types.GenerateContentConfig(safety_settings=safety_settings)
+            )
+            if response and response.text:
+                return response.text.strip()
+        except Exception as e:
+            print(f"v1beta fallback failed: {e}")
+
+    return f"⚠️ 要約生成に失敗しました。\n詳細: {', '.join(block_reasons[:5])}..."
 
 def send_discord_notification(webhook_url, content, is_embed=True):
     if not webhook_url or "YOUR_DISCORD" in webhook_url:
