@@ -121,18 +121,38 @@ def summarize_batch(api_key, stock_data_list):
 - 冷静、論理的、かつ投資家に寄り添った口調（日本語）。
 """
 
-    models_to_try = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro']
+    # List of models with 'models/' prefix for better SDK compatibility
+    models_to_try = ['models/gemini-2.0-flash', 'models/gemini-1.5-flash', 'models/gemini-1.5-pro']
     
+    # Import safety settings from the SDK
+    from google.genai import types
+    safety_settings = [
+        types.SafetySetting(category='HATE_SPEECH', threshold='BLOCK_NONE'),
+        types.SafetySetting(category='HARASSMENT', threshold='BLOCK_NONE'),
+        types.SafetySetting(category='SEXUALLY_EXPLICIT', threshold='BLOCK_NONE'),
+        types.SafetySetting(category='DANGEROUS_CONTENT', threshold='BLOCK_NONE'),
+    ]
+
     for model_id in models_to_try:
         try:
             print(f"Trying Gemini model: {model_id}...")
-            response = client.models.generate_content(model=model_id, contents=prompt)
+            response = client.models.generate_content(
+                model=model_id, 
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    safety_settings=safety_settings,
+                    temperature=0.7
+                )
+            )
             if response and response.text:
                 return response.text.strip()
+            else:
+                # If text is empty, it might be blocked
+                print(f"Model {model_id} returned empty text. Finish reason: {getattr(response, 'candidates', [{}])[0].get('finish_reason', 'Unknown')}")
         except Exception as e:
-            print(f"Model {model_id} failed: {str(e)[:100]}...")
+            print(f"Model {model_id} failed: {str(e)[:150]}...")
             continue
-    return "全てのAIモデルで生成に失敗しました。時間をおいて再度お試しください。"
+    return "全てのAIモデルで生成に失敗しました。一時的な制限か、内容が制限に抵触した可能性があります。時間をおいて再度お試しください。"
 
 def send_discord_notification(webhook_url, content, is_embed=True):
     if not webhook_url or "YOUR_DISCORD" in webhook_url:
