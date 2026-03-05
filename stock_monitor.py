@@ -105,21 +105,35 @@ def summarize_batch(api_key, stock_data_list):
 - 冷静かつ客観的なトーン。
 """
 
-    try:
-        # Using Gemini 1.5 Flash as it is the most widely available free tier model
-        print(f"Calling Gemini API with model: gemini-1.5-flash...")
-        response = client.models.generate_content(
-            model='gemini-1.5-flash',
-            contents=prompt
-        )
-        if not response or not response.text:
-            return "AIからの回答が空でした。内容が制限（セーフティフィルター）に抵触した可能性があります。"
-        return response.text.strip()
-    except Exception as e:
-        error_msg = str(e)
-        if "429" in error_msg:
-            return "Gemini APIの無料枠制限（429 Error）に達しました。しばらく時間をおいてから実行するか、APIキーの設定（AI Studio）を確認してください。"
-        return f"AI要約の生成中にエラーが発生しました: {error_msg}"
+    # List of models to try in order of preference (latest/cheapest first)
+    # Note: 'gemini-2.0-flash' might return 429/limit:0 in some regions, so we fallback to 1.5
+    models_to_try = [
+        'gemini-2.0-flash', 
+        'gemini-1.5-flash', 
+        'gemini-2.0-flash-lite-preview-02-05',
+        'gemini-1.5-flash-latest',
+        'gemini-1.5-pro'
+    ]
+    
+    last_error = ""
+    for model_id in models_to_try:
+        try:
+            print(f"Trying Gemini model: {model_id}...")
+            response = client.models.generate_content(
+                model=model_id,
+                contents=prompt
+            )
+            if response and response.text:
+                print(f"Successfully generated summary using {model_id}")
+                return response.text.strip()
+        except Exception as e:
+            last_error = str(e)
+            print(f"Model {model_id} failed: {last_error[:100]}...")
+            continue
+
+    if "429" in last_error:
+        return "Gemini APIの無料枠制限（429 Error）です。Google AI StudioでAPIキーの利用制限（Quota）を確認するか、時間をおいてお試しください。"
+    return f"AI要約の生成中にエラーが発生しました。全てのモデルが利用できませんでした。最後の理由: {last_error}"
 
 def send_discord_notification(webhook_url, content, is_embed=True):
     if not webhook_url or "YOUR_DISCORD" in webhook_url:
