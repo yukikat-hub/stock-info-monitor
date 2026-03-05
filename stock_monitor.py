@@ -99,33 +99,41 @@ def summarize_batch_with_retry(api_key, stock_data_list):
     if not combined_input:
         return None
 
-    # Refined prompt to avoid "financial advice" blockers while staying useful
+    # 証券アドバイスとしての判定を避けるため、役割を「高度な情報整理アシスタント」に修正
     prompt = f"""
-あなたは客観的な市場分析を行う証券調査AIです。
-以下の銘柄ニュースと投資家の保有状況に基づき、公開情報から読み取れる「市場の動向」と「投資的な重要トピック」を事実に基づいて整理・要約してください。
+あなたは高度なビジネス情報整理アシスタントです。
+以下の銘柄ニュースとステータスに基づき、公開されている事実から「特に注目すべき変化」と「市場の一般的な反応」を客観的に整理してください。
 
-【出力要件】
-1. **重要トピック**: 今回のニュースの中で、中長期の業績や成長性に影響し得るポイントを抽出。
-2. **市場の反応**: 直近の株価動向や投資家の期待値について、入手可能な情報から客観的に記述。
-3. **留意事項**: ニュースの裏にあるリスクや、セクター別のマクロ要因。
-4. **示唆**: 保有状況（損益）を踏まえ、一般的に考えられる「冷静な対応（静観、銘柄入れ替えの検討材料など）」を整理。
+【整理のポイント】
+1. **事業上の重要変化**: 業績、提携、新技術など、企業の将来価値に影響しそうな事実。
+2. **市場のコンセンサス**: 報道やデータから読み取れる、現在の市場参加者の一般的な見方や反応。
+3. **客観的な事実関係**: 関連するマクロ環境（市場全体やセクターの動向）との紐付け。
+4. **保有状況の整理**: 保有者の現在の損益状況を、事実として現在の市場価格と比較して整理（あくまでデータ整理として）。
 
-※注意: 本回答は投資助言ではなく、情報整理を目的としています。
+※注意: 個別の売買の推奨（Buy/Sellなど）は行わないでください。事実に基づいた情報の「示唆」に留めてください。
 
 【対象銘柄データ】
 {combined_input}
 
 【出力形式】
 - 各銘柄「**【銘柄名 (ティッカー)】**」を見出しにする。
-- 各銘柄200〜300文字程度。
+- 各銘柄、事実に基づいた深い洞察を200〜300文字程度で。
 """
 
-    models_to_try = ['models/gemini-2.0-flash', 'models/gemini-1.5-flash', 'models/gemini-1.5-pro']
+    models_to_try = [
+        'models/gemini-1.5-flash', 
+        'models/gemini-2.0-flash', 
+        'models/gemini-2.0-flash-lite',
+        'models/gemini-1.5-pro'
+    ]
+    
+    # 制限をさらに緩和
     safety_settings = [
         types.SafetySetting(category='HATE_SPEECH', threshold='BLOCK_NONE'),
         types.SafetySetting(category='HARASSMENT', threshold='BLOCK_NONE'),
         types.SafetySetting(category='SEXUALLY_EXPLICIT', threshold='BLOCK_NONE'),
         types.SafetySetting(category='DANGEROUS_CONTENT', threshold='BLOCK_NONE'),
+        types.SafetySetting(category='CIVIC_INTEGRITY', threshold='BLOCK_NONE'),
     ]
 
     for model_id in models_to_try:
@@ -134,17 +142,21 @@ def summarize_batch_with_retry(api_key, stock_data_list):
             response = client.models.generate_content(
                 model=model_id, 
                 contents=prompt,
-                config=types.GenerateContentConfig(safety_settings=safety_settings, temperature=0.5)
+                config=types.GenerateContentConfig(safety_settings=safety_settings, temperature=0.3)
             )
             if response and response.text:
                 return response.text.strip()
             else:
-                reason = getattr(response, 'candidates', [{}])[0].get('finish_reason', 'Blocked/Unknown')
+                # ブロック理由の詳細を取得
+                candidates = getattr(response, 'candidates', [])
+                reason = "不明"
+                if candidates:
+                    reason = getattr(candidates[0], 'finish_reason', 'Unknown')
                 print(f"Model {model_id} blocked or returned empty. Reason: {reason}")
         except Exception as e:
-            print(f"Model {model_id} batch error: {str(e)[:150]}")
+            print(f"Model {model_id} error: {str(e)[:150]}")
             continue
-    return "この銘柄グループの要約生成に失敗しました（制限または内容の問題）。"
+    return f"要約生成に失敗しました（AI側の制限に抵触した可能性があります）。"
 
 def send_discord_notification(webhook_url, content, is_embed=True):
     if not webhook_url or "YOUR_DISCORD" in webhook_url:
