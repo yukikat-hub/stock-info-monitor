@@ -2,47 +2,58 @@
   "stocks": [
     {
       "ticker": "3289",
-      "name": "東急不動産HD"
+      "name": "東急不動産HD",
+      "summary_frequency": "weekly"
     },
     {
       "ticker": "4307",
-      "name": "野村総合研究所"
+      "name": "野村総合研究所",
+      "summary_frequency": "weekly"
     },
     {
       "ticker": "4425",
-      "name": "Kudan"
+      "name": "Kudan",
+      "summary_frequency": "daily"
     },
     {
       "ticker": "6758",
-      "name": "ソニーグループ"
+      "name": "ソニーグループ",
+      "summary_frequency": "weekly"
     },
     {
       "ticker": "7779",
-      "name": "CYBERDYNE"
+      "name": "CYBERDYNE",
+      "summary_frequency": "daily"
     },
     {
       "ticker": "7974",
-      "name": "任天堂"
+      "name": "任天堂",
+      "summary_frequency": "weekly"
     },
     {
       "ticker": "8306",
-      "name": "三菱UFJフィナンシャルG"
+      "name": "三菱UFJフィナンシャルG",
+      "summary_frequency": "weekly"
     },
     {
       "ticker": "9984",
-      "name": "ソフトバンクグループ"
+      "name": "ソフトバンクグループ",
+      "summary_frequency": "daily"
     },
     {
       "ticker": "GOOG",
-      "name": "アルファベット クラスC"
+      "name": "アルファベット クラスC",
+      "summary_frequency": "daily"
     },
     {
       "ticker": "2646",
-      "name": "グローバルＸ 半導体関連-日本株式 ETF"
+      "name": "グローバルＸ 半導体関連-日本株式 ETF",
+      "summary_frequency": "daily"
     },
     {
       "ticker": "5586",
-      "name": "Laboro.AI"
+      "name": "Laboro.AI",
+      "summary_frequency": "daily"
     }
   ],
   "keywords": [

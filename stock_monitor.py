@@ -160,20 +160,42 @@ def run_normal_mode(config, state, webhook_url):
     save_state(new_state)
 
 def run_summary_mode(config, webhook_url, gemini_api_key):
-    summary_msg = f"## 📊 保有銘柄：週刊 AIマーケット・ダイジェスト ({datetime.now().strftime('%Y/%m/%d')})\n\n"
+    today = datetime.now()
+    is_monday = today.weekday() == 0
+    
+    summary_msg = f"## 📊 AI マーケット・ダイジェスト ({today.strftime('%Y/%m/%d')})\n"
+    has_any_content = False
     
     for stock in config['stocks']:
         ticker = stock['ticker']
         name = stock['name']
-        print(f"Summarizing news for {ticker} {name}...")
+        freq = stock.get('summary_frequency', 'weekly')
         
-        # Fetch news for the last 7 days
-        articles = fetch_google_news(ticker, name, days=7)
-        summary = summarize_with_gemini(gemini_api_key, ticker, name, articles)
+        days_to_fetch = 0
+        label = ""
         
-        summary_msg += f"**【{ticker}】{name}**\n{summary}\n\n"
+        if freq == 'daily':
+            days_to_fetch = 1
+            label = "【本日分】"
+        elif freq == 'weekly' and is_monday:
+            days_to_fetch = 7
+            label = "【今週分】"
+        
+        if days_to_fetch > 0:
+            print(f"Summarizing {freq} news for {ticker} {name}...")
+            articles = fetch_google_news(ticker, name, days=days_to_fetch)
+            if articles:
+                summary = summarize_with_gemini(gemini_api_key, ticker, name, articles)
+                summary_msg += f"**{label} {ticker} {name}**\n{summary}\n\n"
+                has_any_content = True
+            else:
+                # Optional: mention no news for daily if you want
+                pass
     
-    send_discord_notification(webhook_url, summary_msg, is_embed=False)
+    if has_any_content:
+        send_discord_notification(webhook_url, summary_msg, is_embed=False)
+    else:
+        print("No summaries to send today.")
 
 def main():
     parser = argparse.ArgumentParser()

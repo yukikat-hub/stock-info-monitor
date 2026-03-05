@@ -3,7 +3,7 @@ name: Stock News Monitor
 on:
   schedule:
     - cron: '0 * * * *'        # Every hour for alerts
-    - cron: '0 23 * * 0'       # Every Monday 8:00 AM JST (23:00 UTC Sunday) for summary
+    - cron: '0 23 * * *'       # Every day 8:00 AM JST (23:00 UTC) for summary
   workflow_dispatch:
     inputs:
       mode:
