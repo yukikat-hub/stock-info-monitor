@@ -89,6 +89,15 @@ def summarize_with_gemini(api_key, ticker, name, articles):
 
     genai.configure(api_key=api_key)
     
+    # Debug: List all available models
+    try:
+        print("Listing available Gemini models:")
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                print(f" - {m.name}")
+    except Exception as e:
+        print(f"Failed to list models: {e}")
+
     # Try multiple model names for better compatibility
     potential_models = ['gemini-1.5-flash', 'gemini-1.5-flash-latest', 'gemini-2.0-flash', 'gemini-1.5-pro']
     model = None
