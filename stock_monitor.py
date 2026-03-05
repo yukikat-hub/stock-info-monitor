@@ -99,64 +99,66 @@ def summarize_batch_with_retry(api_key, stock_data_list):
     if not combined_input:
         return None
 
-    # 証券アドバイスとしての判定を避けるため、役割を「高度な情報整理アシスタント」に修正
+    # 証券アドバイス判定を避けるため、極めて中立的な「公開情報の要約」に徹する
+    # ポートフォリオの具体的な金額（含み損益）は、フィルタリング回避のため一時的に伏せる
     prompt = f"""
-あなたは高度なビジネス情報整理アシスタントです。
-以下の銘柄ニュースとステータスに基づき、公開されている事実から「特に注目すべき変化」と「市場の一般的な反応」を客観的に整理してください。
+以下の銘柄に関するニュースを、客観的なビジネス情報の観点から整理・要約してください。
+投資助言（買い・売りの推奨）は一切含めず、事実関係の整理のみを行ってください。
 
-【整理のポイント】
-1. **事業上の重要変化**: 業績、提携、新技術など、企業の将来価値に影響しそうな事実。
-2. **市場のコンセンサス**: 報道やデータから読み取れる、現在の市場参加者の一般的な見方や反応。
-3. **客観的な事実関係**: 関連するマクロ環境（市場全体やセクターの動向）との紐付け。
-4. **保有状況の整理**: 保有者の現在の損益状況を、事実として現在の市場価格と比較して整理（あくまでデータ整理として）。
-
-※注意: 個別の売買の推奨（Buy/Sellなど）は行わないでください。事実に基づいた情報の「示唆」に留めてください。
-
-【対象銘柄データ】
+【整理の対象】
 {combined_input}
 
-【出力形式】
+【出力内容】
+1. **主要トピックス**: ニュースの核心部分を1〜2文で。
+2. **市場の背景**: 関連する業界動向やマクロ環境。
+3. **事実に基づく示唆**: 公開情報から導き出せる中立的なビジネス上の含意。
+
+【ルール】
 - 各銘柄「**【銘柄名 (ティッカー)】**」を見出しにする。
-- 各銘柄、事実に基づいた深い洞察を200〜300文字程度で。
+- 1銘柄あたり200文字程度。
+- 冷静かつ客観的な日本語で。
 """
 
+    # 安定性のため gemini-1.5-flash を優先。2.0はv1betaが必要な場合があるため後に。
     models_to_try = [
         'models/gemini-1.5-flash', 
+        'models/gemini-1.5-flash-latest',
         'models/gemini-2.0-flash', 
-        'models/gemini-2.0-flash-lite',
         'models/gemini-1.5-pro'
     ]
     
-    # 制限をさらに緩和
     safety_settings = [
         types.SafetySetting(category='HATE_SPEECH', threshold='BLOCK_NONE'),
         types.SafetySetting(category='HARASSMENT', threshold='BLOCK_NONE'),
         types.SafetySetting(category='SEXUALLY_EXPLICIT', threshold='BLOCK_NONE'),
         types.SafetySetting(category='DANGEROUS_CONTENT', threshold='BLOCK_NONE'),
-        types.SafetySetting(category='CIVIC_INTEGRITY', threshold='BLOCK_NONE'),
     ]
 
+    block_reasons = []
     for model_id in models_to_try:
         try:
             print(f"Trying Gemini model: {model_id} for batch...")
             response = client.models.generate_content(
                 model=model_id, 
                 contents=prompt,
-                config=types.GenerateContentConfig(safety_settings=safety_settings, temperature=0.3)
+                config=types.GenerateContentConfig(safety_settings=safety_settings, temperature=0.2)
             )
             if response and response.text:
                 return response.text.strip()
             else:
-                # ブロック理由の詳細を取得
                 candidates = getattr(response, 'candidates', [])
-                reason = "不明"
+                reason = "不明（レスポンス空）"
                 if candidates:
                     reason = getattr(candidates[0], 'finish_reason', 'Unknown')
-                print(f"Model {model_id} blocked or returned empty. Reason: {reason}")
+                print(f"Model {model_id} blocked. Reason: {reason}")
+                block_reasons.append(f"{model_id}: {reason}")
         except Exception as e:
-            print(f"Model {model_id} error: {str(e)[:150]}")
+            err_str = str(e)[:100]
+            print(f"Model {model_id} error: {err_str}")
+            block_reasons.append(f"{model_id}: Error({err_str})")
             continue
-    return f"要約生成に失敗しました（AI側の制限に抵触した可能性があります）。"
+    
+    return f"⚠️ 要約生成に失敗しました。\n理由: {', '.join(block_reasons)}"
 
 def send_discord_notification(webhook_url, content, is_embed=True):
     if not webhook_url or "YOUR_DISCORD" in webhook_url:
