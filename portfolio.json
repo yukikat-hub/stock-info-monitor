@@ -1,0 +1,74 @@
+[
+    {
+        "ticker_code": "3289",
+        "name": "東急不動産HD",
+        "quantity": 1,
+        "average_acquisition_price": 1534,
+        "market_value": 942,
+        "unrealized_gain_loss": -57
+    },
+    {
+        "ticker_code": "4307",
+        "name": "野村総合研究所",
+        "quantity": 400,
+        "average_acquisition_price": 4139,
+        "market_value": 1646400,
+        "unrealized_gain_loss": -9000
+    },
+    {
+        "ticker_code": "4425",
+        "name": "Kudan",
+        "quantity": 800,
+        "average_acquisition_price": 2114,
+        "market_value": 1651200,
+        "unrealized_gain_loss": -40000
+    },
+    {
+        "ticker_code": "6758",
+        "name": "ソニーグループ",
+        "quantity": 29,
+        "average_acquisition_price": 3484,
+        "market_value": 97643,
+        "unrealized_gain_loss": -3393
+    },
+    {
+        "ticker_code": "7779",
+        "name": "CYBERDYNE",
+        "quantity": 2900,
+        "average_acquisition_price": 355,
+        "market_value": 968600,
+        "unrealized_gain_loss": -60900
+    },
+    {
+        "ticker_code": "7974",
+        "name": "任天堂",
+        "quantity": 18,
+        "average_acquisition_price": 8562,
+        "market_value": 154602,
+        "unrealized_gain_loss": 486
+    },
+    {
+        "ticker_code": "8306",
+        "name": "三菱UFJフィナンシャルG",
+        "quantity": 242,
+        "average_acquisition_price": 2873,
+        "market_value": 659571,
+        "unrealized_gain_loss": -35718
+    },
+    {
+        "ticker_code": "9984",
+        "name": "ソフトバンクグループ",
+        "quantity": 23,
+        "average_acquisition_price": 4443,
+        "market_value": 88320,
+        "unrealized_gain_loss": -13869
+    },
+    {
+        "ticker_code": "GOOG",
+        "name": "アルファベット クラスC",
+        "quantity": 17,
+        "average_acquisition_price": 301.66,
+        "market_value": 809856,
+        "unrealized_gain_loss": 4780
+    }
+]
