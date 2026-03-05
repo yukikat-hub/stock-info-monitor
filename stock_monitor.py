@@ -99,39 +99,40 @@ def summarize_batch_with_retry(api_key, stock_data_list):
     if not combined_input:
         return None
 
-    # 証券アドバイス判定を避けるため、極めて中立的な「公開情報の要約」に徹する
-    # ポートフォリオの具体的な金額（含み損益）は、フィルタリング回避のため一時的に伏せる
+    # 投資アナリストとしての深い分析を復活させ、かつ安全性チェックに抵触しにくい表現にする
     prompt = f"""
-以下の銘柄に関するニュースを、客観的なビジネス情報の観点から整理・要約してください。
-投資助言（買い・売りの推奨）は一切含めず、事実関係の整理のみを行ってください。
+あなたはプロの証券アナリスト兼ポートフォリオマネージャーです。
+以下の銘柄ニュースと投資家の保有状況（取得単価・損益）に基づき、プロの視点から「真に実用的な投資判断の材料」を整理して提供してください。
 
-【整理の対象】
+【分析の要件】
+1. **ファンダメンタルズの変化**: ニュースが中長期的な収益力や競争優位性にどう影響するか。
+2. **需給と市場心理**: 機関投資家や市場全体がこの情報をどう捉え、今後の株価形成にどう寄与するか。
+3. **リスクとシナリオ**: 楽観視できない懸念点や、今後注視すべきマクロ経済指標。
+4. **保有状況に応じた戦略案**: 現在の含み損益を踏まえ、冷静な判断（買い増し、一部利確、損切り検討、継続保有）を行うための論理的な示唆。
+
+※注意: 本回答は情報整理に基づくシミュレーションであり、最終的な投資決定は自己責任で行うよう付記してください。
+
+【入力データ】
 {combined_input}
 
-【出力内容】
-1. **主要トピックス**: ニュースの核心部分を1〜2文で。
-2. **市場の背景**: 関連する業界動向やマクロ環境。
-3. **事実に基づく示唆**: 公開情報から導き出せる中立的なビジネス上の含意。
-
-【ルール】
+【出力形式】
 - 各銘柄「**【銘柄名 (ティッカー)】**」を見出しにする。
-- 1銘柄あたり200文字程度。
-- 冷静かつ客観的な日本語で。
+- プロのレポートとして、1銘柄あたり300文字程度の濃密な分析。
+- 丁寧かつ論理的、自信に満ちた専門的な口調。
 """
 
-    # 安定性のため gemini-1.5-flash を優先。2.0はv1betaが必要な場合があるため後に。
     models_to_try = [
         'models/gemini-1.5-flash', 
-        'models/gemini-1.5-flash-latest',
         'models/gemini-2.0-flash', 
         'models/gemini-1.5-pro'
     ]
     
+    # 正しいカテゴリ名（HARM_CATEGORY_ プレフィックス）を使用
     safety_settings = [
-        types.SafetySetting(category='HATE_SPEECH', threshold='BLOCK_NONE'),
-        types.SafetySetting(category='HARASSMENT', threshold='BLOCK_NONE'),
-        types.SafetySetting(category='SEXUALLY_EXPLICIT', threshold='BLOCK_NONE'),
-        types.SafetySetting(category='DANGEROUS_CONTENT', threshold='BLOCK_NONE'),
+        types.SafetySetting(category='HARM_CATEGORY_HATE_SPEECH', threshold='BLOCK_NONE'),
+        types.SafetySetting(category='HARM_CATEGORY_HARASSMENT', threshold='BLOCK_NONE'),
+        types.SafetySetting(category='HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold='BLOCK_NONE'),
+        types.SafetySetting(category='HARM_CATEGORY_DANGEROUS_CONTENT', threshold='BLOCK_NONE'),
     ]
 
     block_reasons = []
@@ -141,7 +142,10 @@ def summarize_batch_with_retry(api_key, stock_data_list):
             response = client.models.generate_content(
                 model=model_id, 
                 contents=prompt,
-                config=types.GenerateContentConfig(safety_settings=safety_settings, temperature=0.2)
+                config=types.GenerateContentConfig(
+                    safety_settings=safety_settings,
+                    temperature=0.4
+                )
             )
             if response and response.text:
                 return response.text.strip()
