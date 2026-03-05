@@ -106,14 +106,20 @@ def summarize_batch(api_key, stock_data_list):
 """
 
     try:
-        # Using Gemini 2.0 Flash as default since it's the latest and has good free quota
+        # Using Gemini 1.5 Flash as it is the most widely available free tier model
+        print(f"Calling Gemini API with model: gemini-1.5-flash...")
         response = client.models.generate_content(
-            model='gemini-2.0-flash',
+            model='gemini-1.5-flash',
             contents=prompt
         )
+        if not response or not response.text:
+            return "AIからの回答が空でした。内容が制限（セーフティフィルター）に抵触した可能性があります。"
         return response.text.strip()
     except Exception as e:
-        return f"AI要約の生成中にエラーが発生しました: {e}"
+        error_msg = str(e)
+        if "429" in error_msg:
+            return "Gemini APIの無料枠制限（429 Error）に達しました。しばらく時間をおいてから実行するか、APIキーの設定（AI Studio）を確認してください。"
+        return f"AI要約の生成中にエラーが発生しました: {error_msg}"
 
 def send_discord_notification(webhook_url, content, is_embed=True):
     if not webhook_url or "YOUR_DISCORD" in webhook_url:
