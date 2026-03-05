@@ -88,7 +88,26 @@ def summarize_with_gemini(api_key, ticker, name, articles):
         return "今週の新しいニュースはありませんでした。"
 
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    
+    # Try multiple model names for better compatibility
+    potential_models = ['gemini-1.5-flash', 'gemini-1.5-flash-latest', 'gemini-2.0-flash', 'gemini-1.5-pro']
+    model = None
+    
+    for model_name in potential_models:
+        try:
+            print(f"Trying Gemini model: {model_name}...")
+            test_model = genai.GenerativeModel(model_name)
+            # Test model with a simple prompt to verify existence
+            test_model.generate_content("ping", request_options={"timeout": 60})
+            model = test_model
+            print(f"Successfully selected model: {model_name}")
+            break
+        except Exception as e:
+            print(f"Model {model_name} failed: {str(e)[:100]}")
+            continue
+
+    if not model:
+        return "利用可能なGeminiモデルが見つかりませんでした。APIキーの権限やリージョン設定を確認してください。"
     
     titles = [a['title'] for a in articles]
     prompt = f"""
