@@ -1,10 +1,58 @@
 {
   "stocks": [
-    {"ticker": "6098", "name": "リクルートホールディングス"},
-    {"ticker": "2646", "name": "グローバルＸ 半導体関連-日本株式 ETF"},
-    {"ticker": "5586", "name": "Laboro.AI"},
-    {"ticker": "4011", "name": "ヘッドウォータース"}
+    {
+      "ticker": "3289",
+      "name": "東急不動産HD"
+    },
+    {
+      "ticker": "4307",
+      "name": "野村総合研究所"
+    },
+    {
+      "ticker": "4425",
+      "name": "Kudan"
+    },
+    {
+      "ticker": "6758",
+      "name": "ソニーグループ"
+    },
+    {
+      "ticker": "7779",
+      "name": "CYBERDYNE"
+    },
+    {
+      "ticker": "7974",
+      "name": "任天堂"
+    },
+    {
+      "ticker": "8306",
+      "name": "三菱UFJフィナンシャルG"
+    },
+    {
+      "ticker": "9984",
+      "name": "ソフトバンクグループ"
+    },
+    {
+      "ticker": "GOOG",
+      "name": "アルファベット クラスC"
+    },
+    {
+      "ticker": "2646",
+      "name": "グローバルＸ 半導体関連-日本株式 ETF"
+    },
+    {
+      "ticker": "5586",
+      "name": "Laboro.AI"
+    }
   ],
-  "keywords": ["半導体", "AI", "業務提携", "決算", "上方修正"],
+  "keywords": [
+    "半導体",
+    "AI",
+    "業務提携",
+    "決算",
+    "上方修正",
+    "自社株買い",
+    "増配"
+  ],
   "discord_webhook_url": "YOUR_DISCORD_WEBHOOK_URL_HERE"
 }
