@@ -2,8 +2,18 @@ name: Stock News Monitor
 
 on:
   schedule:
-    - cron: '0 * * * *' # Run every hour
-  workflow_dispatch: # Allow manual trigger
+    - cron: '0 * * * *'        # Every hour for alerts
+    - cron: '0 23 * * 0'       # Every Monday 8:00 AM JST (23:00 UTC Sunday) for summary
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Execution mode'
+        required: true
+        default: 'normal'
+        type: choice
+        options:
+          - normal
+          - summary
 
 jobs:
   monitor:
@@ -22,12 +32,25 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Determine execution flag
+        id: flags
+        run: |
+          if [[ "${{ github.event_name }}" == "schedule" && "${{ github.event.schedule }}" == "0 23 * * 0" ]]; then
+            echo "mode=--summary" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ github.event.inputs.mode }}" == "summary" ]]; then
+            echo "mode=--summary" >> $GITHUB_OUTPUT
+          else
+            echo "mode=" >> $GITHUB_OUTPUT
+          fi
+
       - name: Run monitor
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-        run: python stock_monitor.py
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python stock_monitor.py ${{ steps.flags.outputs.mode }}
 
       - name: Commit and push state
+        if: steps.flags.outputs.mode == ''
         run: |
           git config --global user.name "GitHub Action"
           git config --global user.email "action@github.com"

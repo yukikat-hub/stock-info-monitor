@@ -4,7 +4,9 @@ import json
 import os
 import time
 import urllib.parse
-from datetime import datetime
+import argparse
+import google.generativeai as genai
+from datetime import datetime, timedelta
 from bs4 import BeautifulSoup
 
 CONFIG_FILE = 'stocks_config.json'
@@ -24,9 +26,12 @@ def save_state(state):
     with open(STATE_FILE, 'w', encoding='utf-8') as f:
         json.dump(state, f, ensure_ascii=False, indent=2)
 
-def fetch_google_news(ticker, name):
+def fetch_google_news(ticker, name, days=None):
     # Google News RSS for the specific stock
     query = f"{ticker} {name}"
+    if days:
+        query += f" when:{days}d"
+    
     encoded_query = urllib.parse.quote(query)
     url = f"https://news.google.com/rss/search?q={encoded_query}&hl=ja&gl=JP&ceid=JP:ja"
     feed = feedparser.parse(url)
@@ -58,7 +63,6 @@ def fetch_tdnet(ticker):
                 ticker_col = cols[1].text.strip()
                 if ticker in ticker_col:
                     time_str = cols[0].text.strip()
-                    name_col = cols[2].text.strip()
                     title_col = cols[3].text.strip()
                     link_tag = cols[3].find('a')
                     
@@ -76,69 +80,115 @@ def fetch_tdnet(ticker):
     
     return articles
 
-def send_discord_notification(webhook_url, article):
+def summarize_with_gemini(api_key, ticker, name, articles):
+    if not api_key:
+        return "Gemini APIキーが設定されていないため、要約をスキップしました。"
+    
+    if not articles:
+        return "今週の新しいニュースはありませんでした。"
+
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel('gemini-1.5-flash')
+    
+    titles = [a['title'] for a in articles]
+    prompt = f"""
+以下の銘柄に関する直近1週間のニュースタイトルのリストを読み取り、重要なトピックを最大3行で要約してください。
+今後の投資判断に役立つ「注目ポイント」や「懸念点」があればそれも含めてください。
+
+銘柄: {ticker} {name}
+ニュースリスト:
+{chr(10).join(titles)}
+
+要約ルール:
+- 箇条書きで3行以内。
+- 具体的かつ冷静なトーンで。
+- まったくニュースがない場合は「特筆すべきニュースはありませんでした」と回答。
+"""
+    
+    try:
+        response = model.generate_content(prompt)
+        return response.text.strip()
+    except Exception as e:
+        return f"要約の生成中にエラーが発生しました: {e}"
+
+def send_discord_notification(webhook_url, content, is_embed=True):
     if not webhook_url or "YOUR_DISCORD" in webhook_url:
-        print(f"Skipping notification (No Webhook): {article['title']}")
+        print(f"Skipping notification (No Webhook): {content[:50]}...")
         return
 
-    data = {
-        "embeds": [{
-            "title": article['title'],
-            "url": article['link'],
-            "description": f"Source: {article['source']}\nPublished: {article['published']}",
-            "color": 3447003
-        }]
-    }
+    if is_embed:
+        data = {"embeds": [content] if isinstance(content, dict) else [content]}
+    else:
+        data = {"content": content}
+
     response = requests.post(webhook_url, json=data)
     if response.status_code != 204:
         print(f"Failed to send notification: {response.status_code}")
 
-def main():
-    config = load_config()
-    state = load_state()
-    # Use environment variable for webhook if available
-    webhook_url = os.environ.get('DISCORD_WEBHOOK_URL') or config.get('discord_webhook_url')
-    
+def run_normal_mode(config, state, webhook_url):
     new_state = state.copy()
-    
     for stock in config['stocks']:
         ticker = stock['ticker']
         name = stock['name']
         print(f"Checking news for {ticker} {name}...")
         
-        # Fetch Google News
-        news_articles = fetch_google_news(ticker, name)
-        # Fetch TDnet
-        tdnet_articles = fetch_tdnet(ticker)
+        all_articles = fetch_google_news(ticker, name) + fetch_tdnet(ticker)
         
-        all_articles = news_articles + tdnet_articles
-        
-        # Filter and notify
         for article in all_articles:
-            article_id = article['id']
-            title = article['title']
-            
-            # Check if already notified
-            if article_id not in state.get(ticker, []):
-                # Filter by keywords for general news (TDnet is always notified)
+            if article['id'] not in state.get(ticker, []):
                 is_relevant = article['source'] == 'TDnet'
                 if not is_relevant:
                     for kw in config.get('keywords', []):
-                        if kw in title:
+                        if kw in article['title']:
                             is_relevant = True
                             break
                 
                 if is_relevant:
-                    send_discord_notification(webhook_url, article)
+                    embed = {
+                        "title": article['title'],
+                        "url": article['link'],
+                        "description": f"Source: {article['source']}\nPublished: {article['published']}",
+                        "color": 3447003
+                    }
+                    send_discord_notification(webhook_url, embed)
                     if ticker not in new_state:
                         new_state[ticker] = []
-                    new_state[ticker].append(article_id)
-                
-        # Keep only last 50 IDs to avoid bloat (inside the ticker loop)
+                    new_state[ticker].append(article['id'])
+        
         if ticker in new_state and len(new_state[ticker]) > 50:
             new_state[ticker] = new_state[ticker][-50:]
-
     save_state(new_state)
+
+def run_summary_mode(config, webhook_url, gemini_api_key):
+    summary_msg = f"## 📊 保有銘柄：週刊 AIマーケット・ダイジェスト ({datetime.now().strftime('%Y/%m/%d')})\n\n"
+    
+    for stock in config['stocks']:
+        ticker = stock['ticker']
+        name = stock['name']
+        print(f"Summarizing news for {ticker} {name}...")
+        
+        # Fetch news for the last 7 days
+        articles = fetch_google_news(ticker, name, days=7)
+        summary = summarize_with_gemini(gemini_api_key, ticker, name, articles)
+        
+        summary_msg += f"**【{ticker}】{name}**\n{summary}\n\n"
+    
+    send_discord_notification(webhook_url, summary_msg, is_embed=False)
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--summary', action='store_true', help='Run in weekly summary mode')
+    args = parser.parse_args()
+
+    config = load_config()
+    state = load_state()
+    webhook_url = os.environ.get('DISCORD_WEBHOOK_URL') or config.get('discord_webhook_url')
+    gemini_api_key = os.environ.get('GEMINI_API_KEY')
+
+    if args.summary:
+        run_summary_mode(config, webhook_url, gemini_api_key)
+    else:
+        run_normal_mode(config, state, webhook_url)
 
 if __name__ == "__main__":
     main()
