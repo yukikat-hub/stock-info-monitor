@@ -90,7 +90,8 @@ def summarize_batch_with_retry(api_key, stock_data_list):
             combined_input += f"（保有状況: {p.get('quantity', 0)}株, 平均取得単価: {p.get('average_acquisition_price', 0)}, 現在価値: {p.get('market_value', 0)}, 前日比損益: {p.get('unrealized_gain_loss', 0)}）\n"
         
         for a in item['articles']:
-            combined_input += f"- {a['title']} ({a['source']})\n"
+            combined_input += f"- {a['title']}\n"
+            combined_input += f"  Source: {a['source']}, Published: {a['published']}, URL: {a['link']}\n"
             if a.get('snippet') and len(a['snippet']) > 20:
                 combined_input += f"  内容概要: {a['snippet'][:150]}...\n"
         combined_input += "\n"
@@ -107,6 +108,12 @@ def summarize_batch_with_retry(api_key, stock_data_list):
 1. **事実の抽出**: ニュースが企業の事業や収益性に与える具体的な事実関係。
 2. **市場のコンセンサス**: 報道等から読み取れる一般的な市場の反応や期待値。
 3. **データ整理**: 保有銘柄の状況（規模・損益）に応じた情報の優先順位付け。
+4. **出典の明記**: 各銘柄の記述の最後に、参照したニュースの【タイトル、URL、発行日】をリスト形式で必ず記載してください。
+
+【出力形式】
+- 各銘柄「**【銘柄名 (ティッカー)】**」を見出しにする。
+- 要約分析（200〜300文字程度）。
+- 最後に「参考リンク」セクション件を作り、`[タイトル](URL) (日付)` の形式で記載。
 
 ※注意: 本内容は売買を推奨するものではなく、公開情報の整理を目的としています。
 
