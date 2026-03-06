@@ -205,14 +205,17 @@ def main():
         
         for ticker in all_tickers:
             p_data = portfolio_map.get(ticker)
-            c_data = config_map.get(ticker)
+            s_config = config_map.get(ticker)
             
-            name = (p_data.get('name') if p_data else None) or (c_data.get('name') if c_data else None) or ticker
-            market_value = p_data.get('market_value', 0) if p_data else -1 # Use -1 for non-portfolio items to put them at very bottom
+            name = (p_data.get('name') if p_data else None) or (s_config.get('name') if s_config else None) or ticker
+            market_value = p_data.get('market_value', 0) if p_data else -1
             
-            articles = fetch_google_news(ticker, name, days=7)
-            if not articles:
-                articles = fetch_google_news(ticker, name, days=14)[:2]
+            # Decide fetch range based on summary_frequency (Daily=1day, Weekly=7days)
+            freq = s_config.get('summary_frequency', 'weekly') if s_config else 'weekly'
+            fetch_days = 2 if freq == 'daily' else 7 # Use 2 days for daily to catch weekend/late news if needed, or 1 for strictness
+            
+            print(f"Fetching {fetch_days} days of news for {name} ({ticker})...")
+            articles = fetch_google_news(ticker, name, days=fetch_days)
             
             stock_data_list.append({
                 'ticker': ticker, 
