@@ -1,11 +1,6 @@
 {
   "stocks": [
     {
-      "ticker": "3289",
-      "name": "東急不動産HD",
-      "summary_frequency": "weekly"
-    },
-    {
       "ticker": "4307",
       "name": "野村総合研究所",
       "summary_frequency": "weekly"
@@ -16,8 +11,8 @@
       "summary_frequency": "daily"
     },
     {
-      "ticker": "6758",
-      "name": "ソニーグループ",
+      "ticker": "ACN",
+      "name": "アクセンチュア",
       "summary_frequency": "weekly"
     },
     {
@@ -26,13 +21,28 @@
       "summary_frequency": "daily"
     },
     {
+      "ticker": "GOOG",
+      "name": "アルファベット クラスC",
+      "summary_frequency": "daily"
+    },
+    {
+      "ticker": "8306",
+      "name": "三菱UFJフィナンシャルG",
+      "summary_frequency": "weekly"
+    },
+    {
+      "ticker": "PLTR",
+      "name": "パランティア・テクノロジーズ",
+      "summary_frequency": "weekly"
+    },
+    {
       "ticker": "7974",
       "name": "任天堂",
       "summary_frequency": "weekly"
     },
     {
-      "ticker": "8306",
-      "name": "三菱UFJフィナンシャルG",
+      "ticker": "6758",
+      "name": "ソニーグループ",
       "summary_frequency": "weekly"
     },
     {
@@ -41,19 +51,9 @@
       "summary_frequency": "daily"
     },
     {
-      "ticker": "GOOG",
-      "name": "アルファベット クラスC",
-      "summary_frequency": "daily"
-    },
-    {
-      "ticker": "2646",
-      "name": "グローバルＸ 半導体関連-日本株式 ETF",
-      "summary_frequency": "daily"
-    },
-    {
-      "ticker": "5586",
-      "name": "Laboro.AI",
-      "summary_frequency": "daily"
+      "ticker": "3289",
+      "name": "東急不動産HD",
+      "summary_frequency": "weekly"
     }
   ],
   "keywords": [

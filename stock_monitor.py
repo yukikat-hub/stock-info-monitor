@@ -24,7 +24,6 @@ def save_json(filepath, data):
     with open(filepath, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
-
 def fetch_google_news(ticker, name, days=None):
     query = f"{ticker} {name}"
     if days:
@@ -44,7 +43,8 @@ def fetch_google_news(ticker, name, days=None):
         if hasattr(entry, 'published_parsed'):
             pub_date = datetime(*entry.published_parsed[:6])
         
-        if cutoff and pub_date and pub_date < cutoff:
+        # If we can't determine the date, we exclude it for strictness
+        if cutoff and (pub_date is None or pub_date < cutoff):
             continue
 
         summary = entry.get('summary', '') or entry.get('description', '')
@@ -58,9 +58,12 @@ def fetch_google_news(ticker, name, days=None):
         })
     return articles
 
-def fetch_tdnet(ticker):
+def fetch_tdnet(ticker, days=None):
     url = "https://www.release.tdnet.info/inbs/I_main_00.html"
     articles = []
+    now = datetime.now()
+    cutoff = now - timedelta(days=days) if days else None
+    
     try:
         response = requests.get(url, timeout=10)
         response.encoding = 'utf-8'
@@ -71,14 +74,20 @@ def fetch_tdnet(ticker):
             if len(cols) >= 5:
                 ticker_col = cols[1].text.strip()
                 if ticker in ticker_col:
-                    time_str = cols[0].text.strip()
+                    time_str = cols[0].text.strip() # HH:MM
                     title_col = cols[3].text.strip()
+                    
+                    # TDnet main page is only for today. If we want past days, it's harder, 
+                    # but for 'daily' (1 day) it works.
+                    # For simplicity, we assume TDnet main page is 'today'.
+                    if cutoff and now < cutoff: continue # Should not happen for today
+
                     link_tag = cols[3].find('a')
                     if link_tag:
                         pdf_link = "https://www.release.tdnet.info/inbs/" + link_tag.get('href')
                         articles.append({
                             'id': f"tdnet_{ticker}_{time_str}_{title_col}",
-                            'title': f"【適時開示】{title_col}",
+                            'title': f"【TOPIX/適時開示】{title_col}",
                             'link': pdf_link,
                             'published': f"{datetime.now().strftime('%Y-%m-%d')} {time_str}",
                             'source': 'TDnet',
@@ -89,7 +98,6 @@ def fetch_tdnet(ticker):
     return articles
 
 def summarize_batch_with_retry(api_key, stock_data_list):
-    """Summarize a small batch of stocks with retry and safety handling."""
     if not api_key:
         return "Gemini APIキーが設定されていません。"
 
@@ -112,7 +120,6 @@ def summarize_batch_with_retry(api_key, stock_data_list):
     if not combined_input:
         return None
 
-    # 投資アドバイスと判定されないよう、役割を「高度な情報収集・整理アシスタント」に調整
     prompt = f"""
 あなたは高度なビジネス情報整理アシスタントです。
 以下のニュースとデータに基づき、市場の事実関係を客観的に要約・整理してください。
@@ -126,7 +133,7 @@ def summarize_batch_with_retry(api_key, stock_data_list):
 【出力形式】
 - 各銘柄「**【銘柄名 (ティッカー)】**」を見出しにする。
 - 要約分析（200〜300文字程度）。
-- 最後に「参考リンク」セクション件を作り、`[タイトル](URL) (日付)` の形式で記載。
+- 最後に「参考リンク」セクションを作り、`[タイトル](URL) (日付)` の形式で記載。
 
 ※注意: 本内容は売買を推奨するものではなく、公開情報の整理を目的としています。
 
@@ -134,7 +141,6 @@ def summarize_batch_with_retry(api_key, stock_data_list):
 {combined_input}
 """
 
-    # 以前成功したロジックに基づき、動的な発見とprefix試行を復活
     discovered_models = []
     try:
         for m in client.models.list():
@@ -170,7 +176,6 @@ def summarize_batch_with_retry(api_key, stock_data_list):
             errors.append(f"{model_id}({str(e)[:40]})")
             continue
 
-    # v1beta Fallback
     try:
         beta_client = genai.Client(api_key=api_key, http_options={'api_version': 'v1beta'})
         response = beta_client.models.generate_content(model='gemini-1.5-flash', contents=prompt)
@@ -204,7 +209,7 @@ def main():
     args = parser.parse_args()
 
     config = load_json(CONFIG_FILE)
-    if isinstance(config, list): config = {"stocks": [], "keywords": []} # Failsafe
+    if isinstance(config, list): config = {"stocks": [], "keywords": []}
     state = load_json(STATE_FILE)
     portfolio = load_json(PORTFOLIO_FILE)
     
@@ -216,13 +221,9 @@ def main():
 
     if args.summary:
         today = datetime.now()
-        
-        # Combine all tickers (from config and portfolio)
         all_tickers = set(portfolio_map.keys()) | set(config_map.keys())
         
         stock_data_list = []
-        print(f"Gathering data for {len(all_tickers)} stocks...")
-        
         for ticker in all_tickers:
             p_data = portfolio_map.get(ticker)
             s_config = config_map.get(ticker)
@@ -230,22 +231,18 @@ def main():
             name = (p_data.get('name') if p_data else None) or (s_config.get('name') if s_config else None) or ticker
             market_value = p_data.get('market_value', 0) if p_data else -1
             
-            # Decide fetch range based on summary_frequency (Daily=1day, Weekly=7days)
             freq = s_config.get('summary_frequency', 'weekly') if s_config else 'weekly'
             fetch_days = 1 if freq == 'daily' else 7
             
             print(f"Fetching {fetch_days} days of news for {name} ({ticker})...")
-            articles = fetch_google_news(ticker, name, days=fetch_days)
+            # Google News + TDnet
+            articles = fetch_google_news(ticker, name, days=fetch_days) + fetch_tdnet(ticker, days=fetch_days)
             
             stock_data_list.append({
-                'ticker': ticker, 
-                'name': name, 
-                'articles': articles, 
-                'market_value': market_value,
-                'portfolio': p_data
+                'ticker': ticker, 'name': name, 'articles': articles, 
+                'market_value': market_value, 'portfolio': p_data
             })
 
-        # Sort by market value (descending)
         stock_data_list.sort(key=lambda x: x['market_value'], reverse=True)
 
         if stock_data_list:
@@ -253,19 +250,18 @@ def main():
             summaries = []
             for i in range(0, len(stock_data_list), batch_size):
                 batch = stock_data_list[i : i + batch_size]
-                print(f"Processing batch {i//batch_size + 1}...")
                 batch_summary = summarize_batch_with_retry(gemini_api_key, batch)
-                summaries.append(batch_summary)
+                if batch_summary: summaries.append(batch_summary)
                 time.sleep(1)
 
-            full_summary = "\n\n".join(summaries)
-            header = f"## 💎 AI 投資戦略サマリー ({today.strftime('%Y/%m/%d')})\n\n"
-            send_discord_notification(webhook_url, header + full_summary, is_embed=False)
+            if summaries:
+                full_summary = "\n\n".join(summaries)
+                header = f"## 💎 AI 投資戦略サマリー ({today.strftime('%Y/%m/%d')})\n\n"
+                send_discord_notification(webhook_url, header + full_summary, is_embed=False)
         else:
             print("No data to summarize.")
 
     else:
-        # Alert Mode
         new_state = state.copy()
         for s in config.get('stocks', []):
             ticker, name = s['ticker'], s['name']
