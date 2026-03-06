@@ -7,7 +7,7 @@ import urllib.parse
 import argparse
 from google import genai
 from google.genai import types
-from datetime import datetime
+from datetime import datetime, timedelta
 from bs4 import BeautifulSoup
 
 CONFIG_FILE = 'stocks_config.json'
@@ -24,6 +24,7 @@ def save_json(filepath, data):
     with open(filepath, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
+
 def fetch_google_news(ticker, name, days=None):
     query = f"{ticker} {name}"
     if days:
@@ -33,7 +34,19 @@ def fetch_google_news(ticker, name, days=None):
     url = f"https://news.google.com/rss/search?q={encoded_query}&hl=ja&gl=JP&ceid=JP:ja"
     feed = feedparser.parse(url)
     articles = []
+    
+    now = datetime.now()
+    cutoff = now - timedelta(days=days) if days else None
+
     for entry in feed.entries:
+        # Strict publication date filtering
+        pub_date = None
+        if hasattr(entry, 'published_parsed'):
+            pub_date = datetime(*entry.published_parsed[:6])
+        
+        if cutoff and pub_date and pub_date < cutoff:
+            continue
+
         summary = entry.get('summary', '') or entry.get('description', '')
         articles.append({
             'id': entry.id,
@@ -219,7 +232,7 @@ def main():
             
             # Decide fetch range based on summary_frequency (Daily=1day, Weekly=7days)
             freq = s_config.get('summary_frequency', 'weekly') if s_config else 'weekly'
-            fetch_days = 2 if freq == 'daily' else 7 # Use 2 days for daily to catch weekend/late news if needed, or 1 for strictness
+            fetch_days = 1 if freq == 'daily' else 7
             
             print(f"Fetching {fetch_days} days of news for {name} ({ticker})...")
             articles = fetch_google_news(ticker, name, days=fetch_days)
